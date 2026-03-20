@@ -1,0 +1,14 @@
+networks:
+  faber-laravel-postgres:
+
+services:
+  server:
+    env_file: .env
+    image: nginx:stable-alpine
+    ports:
+      - "3009:80"
+    volumes:
+      - ./html:/usr/share/nginx/html
+    container_name: ${APP_NAME}_nginx_server
+    networks:
+      - faber-laravel-postgres

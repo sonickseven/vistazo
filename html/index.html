@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="es">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Vistazo - Proyector con JSDoc</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+        <style>
+            .fade-in {
+                animation: fadeIn 0.4s ease-out;
+            }
+            @keyframes fadeIn {
+                from {
+                    opacity: 0;
+                    transform: scale(0.98);
+                }
+                to {
+                    opacity: 1;
+                    transform: scale(1);
+                }
+            }
+            #viewer-container:fullscreen {
+                width: 100vw !important;
+                height: 100vh !important;
+                background-color: #000 !important;
+                padding: 0 !important;
+                display: flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+            }
+            #viewer-container:fullscreen canvas {
+                max-height: 100vh !important;
+                border-radius: 0 !important;
+            }
+            :fullscreen ~ header,
+            :fullscreen ~ #controls-info {
+                display: none !important;
+            }
+            .drag-over {
+                border-color: #6366f1 !important;
+                background-color: rgba(99, 102, 241, 0.1) !important;
+                transform: scale(1.01);
+            }
+            canvas {
+                max-width: 100%;
+                height: auto !important;
+                transition: all 0.3s ease;
+            }
+        </style>
+    </head>
+    <body
+        class="bg-slate-950 text-slate-100 min-h-screen flex flex-col items-center py-12 px-4 font-sans"
+    >
+        <div class="max-w-5xl w-full flex flex-col items-center gap-8">
+            <header id="main-header" class="text-center space-y-6">
+                <h1
+                    class="text-6xl font-black bg-gradient-to-r from-blue-400 via-indigo-400 to-emerald-400 bg-clip-text text-transparent italic tracking-tighter"
+                >
+                    VISTAZO
+                </h1>
+                <div class="flex items-center gap-4 justify-center">
+                    <label
+                        class="group flex items-center gap-3 px-8 py-4 bg-indigo-600 hover:bg-indigo-500 rounded-2xl cursor-pointer transition-all shadow-xl shadow-indigo-900/20 active:scale-95"
+                    >
+                        <span class="font-bold">Seleccionar PDF</span>
+                        <input
+                            type="file"
+                            id="file-upload"
+                            class="hidden"
+                            accept="application/pdf"
+                        />
+                    </label>
+                    <button
+                        id="btn-fullscreen"
+                        class="hidden px-8 py-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-2xl font-bold transition-all active:scale-95 shadow-lg"
+                    >
+                        Presentar
+                    </button>
+                </div>
+            </header>
+
+            <div
+                id="viewer-container"
+                class="relative w-full flex justify-center items-center bg-slate-900/50 rounded-[2.5rem] border-2 border-dashed border-slate-800 p-8 min-h-[500px] shadow-2xl overflow-hidden group transition-all duration-300"
+            >
+                <button
+                    id="prev-page"
+                    class="hidden absolute left-6 z-10 p-5 rounded-full bg-slate-800/60 hover:bg-indigo-600 text-white group-hover:flex transition-all backdrop-blur-md"
+                >
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-8 w-8"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="3"
+                            d="M15 19l-7-7 7-7"
+                        />
+                    </svg>
+                </button>
+                <canvas
+                    id="pdf-render"
+                    class="hidden shadow-2xl rounded-xl"
+                ></canvas>
+                <button
+                    id="next-page"
+                    class="hidden absolute right-6 z-10 p-5 rounded-full bg-slate-800/60 hover:bg-indigo-600 text-white group-hover:flex transition-all backdrop-blur-md"
+                >
+                    <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        class="h-8 w-8"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="3"
+                            d="M9 5l7 7-7 7"
+                        />
+                    </svg>
+                </button>
+                <div
+                    id="placeholder"
+                    class="flex flex-col items-center gap-4 text-slate-500 pointer-events-none"
+                >
+                    <p class="font-bold uppercase tracking-widest text-sm">
+                        Arrastra tu PDF aquí o usa el botón
+                    </p>
+                </div>
+            </div>
+
+            <div
+                id="controls-info"
+                class="invisible flex flex-col items-center gap-3"
+            >
+                <div
+                    class="px-6 py-2 bg-slate-800/50 rounded-full border border-slate-700/50 shadow-inner"
+                >
+                    <span
+                        id="page-num"
+                        class="text-indigo-400 font-bold text-xl"
+                        >0</span
+                    >
+                    <span class="text-slate-600 mx-2">/</span>
+                    <span
+                        id="page-count"
+                        class="text-slate-400 font-bold text-xl"
+                        >0</span
+                    >
+                </div>
+            </div>
+        </div>
+
+        <script>
+            /** @type {any} Referencia a la librería PDF.js cargada globalmente */
+            const pdfjsLib = window["pdfjs-dist/build/pdf"];
+            pdfjsLib.GlobalWorkerOptions.workerSrc =
+                "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+            /** @type {Object|null} Instancia del documento PDF cargado */
+            let pdfDoc = null;
+            /** @type {number} Número de la página actual */
+            let pageNum = 1;
+            /** @type {boolean} Estado de renderizado para evitar colisiones */
+            let pageRendering = false;
+            /** @type {number} Escala de renderizado (calidad) */
+            const scale = 2.5;
+
+            /** @type {HTMLCanvasElement} Elemento canvas para el dibujo */
+            const canvas = document.getElementById("pdf-render");
+            /** @type {CanvasRenderingContext2D} Contexto 2D del canvas */
+            const ctx = canvas.getContext("2d");
+            /** @type {HTMLElement} Contenedor principal del visor */
+            const container = document.getElementById("viewer-container");
+
+            /**
+             * Renderiza una página específica del documento PDF.
+             * @param {number} num - El número de página a renderizar.
+             * @returns {void}
+             */
+            const renderPage = (num) => {
+                pageRendering = true;
+
+                // Reiniciar animación
+                canvas.classList.remove("fade-in");
+                void canvas.offsetWidth;
+                canvas.classList.add("fade-in");
+
+                pdfDoc.getPage(num).then((page) => {
+                    const viewport = page.getViewport({ scale });
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+
+                    /** @type {Object} Parámetros de contexto para el renderizado */
+                    const renderContext = {
+                        canvasContext: ctx,
+                        viewport: viewport,
+                    };
+
+                    page.render(renderContext).promise.then(() => {
+                        pageRendering = false;
+                    });
+                });
+
+                // Actualizar interfaz
+                document.getElementById("page-num").textContent =
+                    num.toString();
+                document.getElementById("prev-page").style.display =
+                    num <= 1 ? "none" : "flex";
+                document.getElementById("next-page").style.display =
+                    num >= pdfDoc.numPages ? "none" : "flex";
+            };
+
+            /**
+             * Procesa el archivo PDF seleccionado o arrastrado.
+             * @param {File} file - El objeto de archivo PDF.
+             * @returns {void}
+             */
+            const handleFile = (file) => {
+                if (file?.type === "application/pdf") {
+                    /** @type {FileReader} Lector de archivos del navegador */
+                    const reader = new FileReader();
+                    reader.onload = function () {
+                        /** @type {Uint8Array} Datos del archivo convertidos para PDF.js */
+                        const data = new Uint8Array(this.result);
+
+                        pdfjsLib.getDocument({ data }).promise.then((pdf) => {
+                            pdfDoc = pdf;
+                            document.getElementById("page-count").textContent =
+                                pdf.numPages.toString();
+
+                            // Mostrar elementos ocultos
+                            canvas.classList.remove("hidden");
+                            document
+                                .getElementById("placeholder")
+                                .classList.add("hidden");
+                            document
+                                .getElementById("controls-info")
+                                .classList.remove("invisible");
+                            document
+                                .getElementById("btn-fullscreen")
+                                .classList.remove("hidden");
+                            container.style.borderStyle = "solid";
+
+                            pageNum = 1;
+                            renderPage(pageNum);
+                        });
+                    };
+                    reader.readAsArrayBuffer(file);
+                }
+            };
+
+            // --- Eventos de Interacción ---
+
+            container.addEventListener("dragover", (e) => {
+                e.preventDefault();
+                container.classList.add("drag-over");
+            });
+            container.addEventListener("dragleave", () =>
+                container.classList.remove("drag-over"),
+            );
+            container.addEventListener("drop", (e) => {
+                e.preventDefault();
+                container.classList.remove("drag-over");
+                handleFile(e.dataTransfer.files[0]);
+            });
+
+            document.getElementById("file-upload").onchange = (e) =>
+                handleFile(e.target.files[0]);
+
+            /** @function goNext Avanza a la siguiente página */
+            const goNext = () => {
+                if (pdfDoc && pageNum < pdfDoc.numPages && !pageRendering)
+                    renderPage(++pageNum);
+            };
+            /** @function goPrev Retrocede a la página anterior */
+            const goPrev = () => {
+                if (pdfDoc && pageNum > 1 && !pageRendering)
+                    renderPage(--pageNum);
+            };
+
+            document.getElementById("next-page").onclick = goNext;
+            document.getElementById("prev-page").onclick = goPrev;
+
+            document.addEventListener("keydown", (e) => {
+                if (e.key === "ArrowRight") goNext();
+                if (e.key === "ArrowLeft") goPrev();
+            });
+
+            document.getElementById("btn-fullscreen").onclick = () => {
+                if (!document.fullscreenElement) container.requestFullscreen();
+            };
+        </script>
+    </body>
+</html>
